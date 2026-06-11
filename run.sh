@@ -11,6 +11,11 @@ fi
 
 .venv/bin/python enqueue.py "$1"
 
+# Hand the queue to Google Apps Script — it sends at 9 AM ET from Google's cloud.
+if grep -q '^GAS_WEB_APP_URL=' .env; then
+  .venv/bin/python push_gas.py
+fi
+
 # Encrypt the queue — the repo is public, queue.json never leaves this machine.
 export $(grep QUEUE_KEY .env)
 openssl enc -aes-256-cbc -pbkdf2 -salt -in queue.json -out queue.enc -pass env:QUEUE_KEY
