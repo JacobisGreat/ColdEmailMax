@@ -1,0 +1,71 @@
+name: Send queued cold emails
+
+on:
+  schedule:
+    # 9:00 AM America/New_York is 13:00 UTC during EDT and 14:00 UTC during EST.
+    # Both fire; send.py exits unless it's actually the 9 AM ET hour.
+    - cron: "0 13 * * *"
+    - cron: "0 14 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Send now, ignoring the 9 AM ET guard"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: send-emails
+  cancel-in-progress: false
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Decrypt queue
+        env:
+          QUEUE_KEY: ${{ secrets.QUEUE_KEY }}
+        run: |
+          if [ -f queue.enc ]; then
+            openssl enc -d -aes-256-cbc -pbkdf2 -in queue.enc -out queue.json -pass env:QUEUE_KEY
+            cp queue.json queue.before.json
+          else
+            echo "No queue.enc yet."
+          fi
+
+      - name: Send due emails
+        env:
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          FORCE: ${{ github.event.inputs.force }}
+        run: |
+          if [ "$FORCE" = "true" ]; then
+            python send.py --force
+          else
+            python send.py
+          fi
+
+      - name: Re-encrypt and commit queue
+        env:
+          QUEUE_KEY: ${{ secrets.QUEUE_KEY }}
+        run: |
+          if [ ! -f queue.json ]; then exit 0; fi
+          if cmp -s queue.json queue.before.json; then
+            echo "Queue unchanged."
+            exit 0
+          fi
+          openssl enc -aes-256-cbc -pbkdf2 -salt -in queue.json -out queue.enc -pass env:QUEUE_KEY
+          rm queue.json queue.before.json
+          git config user.name "coldemailmax-bot"
+          git config user.email "actions@github.com"
+          git add queue.enc
+          git commit -m "queue state $(date -u +%FT%TZ)"
+          git push
