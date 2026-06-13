@@ -49,7 +49,8 @@ Write exactly ONE sentence (max 28 words) that shows Jacob genuinely understands
 {company} does and why it excites him specifically. Requirements:
 - Reference something concrete and real about the company (their actual product, mission, or a real detail) — never generic flattery.
 - First person, casual but sharp, like a smart teenager who did his homework. No corporate buzzwords.
-- Vary your sentence structure — do NOT always open with the company name or with "I".
+- Vary your sentence structure. Do NOT always open with the company name or with "I".
+- NEVER use em dashes or en dashes (— or –). Use commas, periods, or "and" instead.
 - Do NOT invent facts. Only use what's in the info above.
 - Do NOT start with "I'm" (the previous paragraph already does).
 - Output ONLY the sentence. No quotes, no preamble.
@@ -131,6 +132,22 @@ def detect_format(text: str) -> str:
 # --------------------------------------------------------------------------- #
 # Research + generation
 # --------------------------------------------------------------------------- #
+def remove_dashes(text: str) -> str:
+    """Strip em/en dashes (and '--') that out a message as AI-written.
+
+    Spaced dashes acting as a clause break become a comma; tidy up the
+    resulting punctuation so nothing reads awkwardly.
+    """
+    if not text:
+        return text
+    text = re.sub(r"\s*[\u2014\u2013\u2015\u2012\u2e3a\u2e3b]\s*", ", ", text)
+    text = re.sub(r"\s+--\s+", ", ", text)
+    text = re.sub(r",\s*,", ", ", text)          # collapse doubled commas
+    text = re.sub(r"\s+,", ",", text)            # no space before comma
+    text = re.sub(r",\s*([.!?;:])", r"\1", text)  # comma then end punctuation
+    return text.strip()
+
+
 def fetch_site_text(url: str) -> str:
     if not url:
         return ""
@@ -178,7 +195,7 @@ def gemini_line(api_key: str, contact: dict, site_text: str) -> str:
             text = data["candidates"][0]["content"]["parts"][0]["text"]
         except (KeyError, IndexError):
             raise RuntimeError(f"Unexpected Gemini response: {json.dumps(data)[:300]}")
-        return text.strip().strip('"').strip()
+        return remove_dashes(text.strip().strip('"').strip())
     raise RuntimeError("Gemini retries exhausted (rate limited)")
 
 
@@ -194,7 +211,7 @@ def build_email(template: str, contact: dict, company_line: str) -> tuple[str, s
     body = body.replace("Hi Name,", f"Hi {contact['first_name']},")
     body = re.sub(r"(?m)^1 line about the compan.*$", company_line, body)
     body = body.replace("[company]", contact["company"])
-    return subject, body
+    return remove_dashes(subject), remove_dashes(body)
 
 
 # --------------------------------------------------------------------------- #
