@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ColdEmailMax</title>
+<style>
+  :root {
+    --bg: #0a0b0f;
+    --panel: #14161d;
+    --panel-2: #1b1e27;
+    --line: #262a36;
+    --text: #e7e9ee;
+    --muted: #8b90a0;
+    --accent: #6d7cff;
+    --accent-2: #9b6dff;
+    --green: #38d39f;
+    --amber: #f5b455;
+    --red: #ff6b6b;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: radial-gradient(1200px 600px at 70% -10%, #1a1d2e 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.5;
+    padding: 48px 20px 80px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+
+  header { margin-bottom: 32px; }
+  .logo {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-weight: 700; font-size: 15px; letter-spacing: .3px;
+  }
+  .logo .dot {
+    width: 22px; height: 22px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    box-shadow: 0 4px 18px rgba(109,124,255,.5);
+  }
+  h1 { font-size: 34px; font-weight: 720; margin: 22px 0 8px; letter-spacing: -.5px; }
+  .sub { color: var(--muted); font-size: 15px; max-width: 560px; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 22px;
+    margin-top: 22px;
+  }
+
+  /* Dropzone */
+  #drop {
+    border: 1.5px dashed #333845;
+    border-radius: var(--radius);
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .18s, background .18s, transform .12s;
+    background: linear-gradient(180deg, rgba(109,124,255,.03), transparent);
+  }
+  #drop:hover { border-color: var(--accent); background: rgba(109,124,255,.06); }
+  #drop.drag { border-color: var(--accent); background: rgba(109,124,255,.10); transform: scale(1.005); }
+  #drop .icon {
+    width: 48px; height: 48px; margin: 0 auto 14px; border-radius: 12px;
+    background: var(--panel-2); display: grid; place-items: center;
+    border: 1px solid var(--line); font-size: 22px;
+  }
+  #drop b { font-weight: 600; }
+  #drop .hint { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  input[type=file] { display: none; }
+
+  .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+  .stat { flex: 1; min-width: 120px; }
+  .stat .n { font-size: 26px; font-weight: 700; }
+  .stat .l { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .6px; }
+  .pill {
+    display: inline-block; font-size: 12px; padding: 3px 10px; border-radius: 999px;
+    background: rgba(109,124,255,.14); color: #aab2ff; border: 1px solid rgba(109,124,255,.3);
+    font-weight: 600;
+  }
+
+  label.field { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  input[type=date] {
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+    border-radius: 10px; padding: 11px 13px; font-size: 14px; font-family: inherit;
+    color-scheme: dark;
+  }
+
+  .btn {
+    border: none; cursor: pointer; font-family: inherit; font-weight: 650; font-size: 15px;
+    color: white; padding: 13px 22px; border-radius: 11px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    box-shadow: 0 6px 22px rgba(109,124,255,.35); transition: transform .12s, opacity .12s;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+  .btn.ghost { background: var(--panel-2); border: 1px solid var(--line); box-shadow: none; color: var(--text); }
+
+  .hidden { display: none !important; }
+
+  /* Preview table */
+  .tbl { margin-top: 16px; max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 13px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--panel-2); font-size: 12px; }
+  td.dup { color: var(--muted); }
+  .tag { font-size: 11px; padding: 1px 7px; border-radius: 6px; }
+  .tag.new { background: rgba(56,211,159,.16); color: var(--green); }
+  .tag.dup { background: rgba(139,144,160,.16); color: var(--muted); }
+
+  /* Progress */
+  .barwrap { height: 8px; background: var(--panel-2); border-radius: 99px; overflow: hidden; margin: 6px 0 18px; }
+  #bar { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .25s; }
+  #feed { display: flex; flex-direction: column; gap: 10px; max-height: 420px; overflow: auto; }
+  .item {
+    border: 1px solid var(--line); border-radius: 11px; padding: 13px 15px; background: var(--panel-2);
+    animation: pop .2s ease; 
+  }
+  @keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .item .head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .item .who { font-weight: 600; font-size: 14px; }
+  .item .co { color: var(--muted); font-size: 12.5px; }
+  .item .line { margin-top: 8px; font-size: 13.5px; color: #cfd3df; font-style: italic; }
+  .badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 7px; text-transform: uppercase; letter-spacing: .4px; }
+  .badge.queued { background: rgba(56,211,159,.16); color: var(--green); }
+  .badge.skipped { background: rgba(139,144,160,.16); color: var(--muted); }
+  .badge.error { background: rgba(255,107,107,.16); color: var(--red); }
+
+  .done {
+    text-align: center; padding: 30px 20px;
+    border: 1px solid rgba(56,211,159,.3); background: rgba(56,211,159,.07); border-radius: var(--radius);
+  }
+  .done .big { font-size: 40px; }
+  .done h2 { margin: 8px 0; font-size: 22px; }
+  .done p { color: var(--muted); }
+
+  .warn { font-size: 13px; color: var(--amber); margin-top: 10px; }
+  .footnote { color: var(--muted); font-size: 12.5px; margin-top: 26px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><span class="dot"></span> ColdEmailMax</div>
+    <h1>Drop a CSV. Send a hundred personalized emails.</h1>
+    <p class="sub">Upload an Apollo export or lead list. Each company gets researched, a tailored
+    line written by AI, and the finished email scheduled for 9:00&nbsp;AM ET — even with this laptop closed.</p>
+  </header>
+
+  {% if not gas_configured %}
+  <div class="card" style="border-color: rgba(245,180,85,.4); background: rgba(245,180,85,.06);">
+    <strong>Heads up:</strong> <span class="warn" style="margin:0">Apps Script isn't configured (no <code>GAS_WEB_APP_URL</code>), so emails will be queued locally but not pushed to the cloud sender.</span>
+  </div>
+  {% endif %}
+
+  <!-- STEP 1: upload -->
+  <div class="card" id="step-upload">
+    <div id="drop">
+      <div class="icon">⬆</div>
+      <b>Drop your CSV here</b> or click to browse
+      <div class="hint">Apollo export or any lead list with names, emails &amp; companies</div>
+    </div>
+    <input type="file" id="file" accept=".csv,text/csv" />
+  </div>
+
+  <!-- STEP 2: review + schedule -->
+  <div class="card hidden" id="step-review">
+    <div class="row" style="align-items:center; margin-bottom:6px;">
+      <div style="flex:1">
+        <span class="pill" id="fmt-pill"></span>
+      </div>
+    </div>
+    <div class="row" style="margin-top:14px;">
+      <div class="stat"><div class="n" id="s-contacts">0</div><div class="l">Contacts</div></div>
+      <div class="stat"><div class="n" id="s-companies">0</div><div class="l">Companies</div></div>
+      <div class="stat"><div class="n" id="s-new">0</div><div class="l">New (not queued)</div></div>
+    </div>
+
+    <div class="tbl"><table>
+      <thead><tr><th>Name</th><th>Title</th><th>Company</th><th>Email</th><th></th></tr></thead>
+      <tbody id="preview-body"></tbody>
+    </table></div>
+
+    <div class="row" style="margin-top:20px;">
+      <div>
+        <label class="field" for="send-date">Send date · 9:00 AM ET</label>
+        <input type="date" id="send-date" value="{{ default_date }}" />
+      </div>
+      <div style="flex:1"></div>
+      <button class="btn ghost" id="btn-cancel">Cancel</button>
+      <button class="btn" id="btn-go">Research &amp; schedule →</button>
+    </div>
+    <div class="warn" id="est"></div>
+  </div>
+
+  <!-- STEP 3: progress -->
+  <div class="card hidden" id="step-progress">
+    <div class="row" style="align-items:center;">
+      <div style="flex:1"><strong id="prog-label">Researching companies…</strong></div>
+      <div class="co" id="prog-count" style="color:var(--muted);font-size:13px"></div>
+    </div>
+    <div class="barwrap"><div id="bar"></div></div>
+    <div id="feed"></div>
+  </div>
+
+  <!-- STEP 4: done -->
+  <div class="card done hidden" id="step-done">
+    <div class="big">✅</div>
+    <h2 id="done-title">Scheduled!</h2>
+    <p id="done-msg"></p>
+    <div style="margin-top:18px"><button class="btn" id="btn-again">Upload another CSV</button></div>
+  </div>
+
+  <p class="footnote">Runs locally · sends from your Gmail via Google Apps Script · nothing leaves your machine unencrypted</p>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+let JOB = null;
+
+const drop = $("#drop"), fileInput = $("#file");
+drop.addEventListener("click", () => fileInput.click());
+["dragover","dragenter"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.add("drag"); }));
+["dragleave","drop"].forEach(e => drop.addEventListener(e, ev => { ev.preventDefault(); drop.classList.remove("drag"); }));
+drop.addEventListener("drop", ev => { if (ev.dataTransfer.files.length) handleFile(ev.dataTransfer.files[0]); });
+fileInput.addEventListener("change", () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+
+async function handleFile(file) {
+  if (!file.name.toLowerCase().endsWith(".csv")) { alert("Please upload a .csv file"); return; }
+  drop.querySelector("b").textContent = "Reading " + file.name + "…";
+  const fd = new FormData(); fd.append("file", file);
+  let res;
+  try { res = await (await fetch("/upload", { method: "POST", body: fd })).json(); }
+  catch (e) { alert("Upload failed: " + e); return; }
+  if (!res.ok) { alert(res.error || "Upload failed"); drop.querySelector("b").textContent = "Drop your CSV here"; return; }
+  JOB = res;
+  renderReview(res);
+}
+
+function renderReview(res) {
+  $("#fmt-pill").textContent = res.format + " · detected";
+  $("#s-contacts").textContent = res.count;
+  $("#s-companies").textContent = res.companies;
+  $("#s-new").textContent = res.new;
+  const body = $("#preview-body"); body.innerHTML = "";
+  res.contacts.forEach(c => {
+    const tr = document.createElement("tr");
+    const tag = c.duplicate ? '<span class="tag dup">queued</span>' : '<span class="tag new">new</span>';
+    tr.innerHTML = `<td class="${c.duplicate?'dup':''}">${esc(c.name)}</td>
+      <td class="${c.duplicate?'dup':''}">${esc(c.title)}</td>
+      <td class="${c.duplicate?'dup':''}">${esc(c.company)}</td>
+      <td class="${c.duplicate?'dup':''}">${esc(c.email)}</td><td>${tag}</td>`;
+    body.appendChild(tr);
+  });
+  const mins = Math.ceil(res.companies * 6 / 60);
+  $("#est").textContent = `≈ ${res.companies} AI research calls (one per company), about ${mins} min.`;
+  show("step-review"); hide("step-upload");
+}
+
+$("#btn-cancel").addEventListener("click", () => { location.reload(); });
+$("#btn-again").addEventListener("click", () => { location.reload(); });
+
+$("#btn-go").addEventListener("click", () => {
+  const date = $("#send-date").value;
+  if (!date) { alert("Pick a send date"); return; }
+  hide("step-review"); show("step-progress");
+  $("#feed").innerHTML = "";
+  const es = new EventSource(`/stream?job_id=${JOB.job_id}&send_date=${date}`);
+  let total = JOB.new || JOB.count, done = 0;
+
+  es.onmessage = (ev) => {
+    const d = JSON.parse(ev.data);
+    if (d.type === "start") { total = d.total; }
+    else if (d.type === "contact") {
+      done++;
+      $("#bar").style.width = Math.round(done/total*100) + "%";
+      $("#prog-count").textContent = `${done} / ${total}`;
+      addItem(d);
+    }
+    else if (d.type === "done") { es.close(); finish(d); }
+    else if (d.type === "error") { es.close(); alert("Error: " + d.message); location.reload(); }
+  };
+  es.onerror = () => { es.close(); };
+});
+
+function addItem(d) {
+  const div = document.createElement("div");
+  div.className = "item";
+  const badge = `<span class="badge ${d.status}">${d.status}</span>`;
+  const line = d.status === "queued"
+    ? `<div class="line">“${esc(d.line)}”</div>`
+    : (d.status === "error" ? `<div class="line" style="color:var(--red);font-style:normal">${esc(d.line)}</div>` : "");
+  div.innerHTML = `<div class="head"><div><div class="who">${esc(d.name||d.email)}</div>
+    <div class="co">${esc(d.company)} · ${esc(d.email)}</div></div>${badge}</div>${line}`;
+  $("#feed").prepend(div);
+}
+
+function finish(d) {
+  hide("step-progress"); show("step-done");
+  const dateStr = new Date(d.send_date + "T09:00:00").toLocaleDateString("en-US",
+    { weekday:"long", month:"long", day:"numeric" });
+  let msg = `${d.added} email${d.added===1?"":"s"} scheduled for ${dateStr} at 9:00 AM ET.`;
+  if (d.gas && d.gas.ok) msg += ` Pushed to the cloud sender (now holding ${d.gas.total}).`;
+  else if (d.added > 0 && d.gas && !d.gas.ok) {
+    msg += ` ⚠️ Cloud push failed (${esc(d.gas.error||"")}) — queued locally only.`;
+    $("#done-title").textContent = "Queued (cloud push failed)";
+  }
+  $("#done-msg").innerHTML = msg;
+}
+
+function show(id){ $("#"+id).classList.remove("hidden"); }
+function hide(id){ $("#"+id).classList.add("hidden"); }
+function esc(s){ return (s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+</script>
+</body>
+</html>
