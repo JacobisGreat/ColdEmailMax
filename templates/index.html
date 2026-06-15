@@ -290,7 +290,8 @@ $("#btn-go").addEventListener("click", () => {
 function addItem(d) {
   const div = document.createElement("div");
   div.className = "item";
-  const badge = `<span class="badge ${d.status}">${d.status}</span>`;
+  const prov = d.provider && d.provider !== "cached" ? `<span class="co" style="font-size:11px">via ${esc(d.provider)}</span>` : "";
+  const badge = `${prov} <span class="badge ${d.status}">${d.status}</span>`;
   const line = d.status === "queued"
     ? `<div class="line">“${esc(d.line)}”</div>`
     : (d.status === "error" ? `<div class="line" style="color:var(--red);font-style:normal">${esc(d.line)}</div>` : "");

@@ -20,8 +20,20 @@ or credentials are ever committed in plaintext — only `queue.enc`.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-cp .env.example .env   # then paste your GEMINI_API_KEY into .env
+cp .env.example .env   # then paste at least one LLM key into .env
 ```
+
+### LLM providers (rate-limit resilience)
+
+Line generation tries providers in order and **falls through to the next when
+one rate-limits**, so adding a second provider multiplies your free headroom:
+
+1. `GEMINI_API_KEY` — Gemini Flash, then Flash-Lite (same key, separate bucket)
+2. `GROQ_API_KEY` — free + generous, https://console.groq.com/keys
+3. `OPENROUTER_API_KEY` — free models, https://openrouter.ai/keys
+4. `CEREBRAS_API_KEY` — free + fast, https://cloud.cerebras.ai
+
+Set as many as you like. One company = one call (cached across its contacts).
 
 GitHub repo secrets (Settings → Secrets and variables → Actions):
 

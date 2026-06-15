@@ -92,9 +92,8 @@ def stream():
         if not job:
             yield sse({"type": "error", "message": "session expired — re-upload"})
             return
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            yield sse({"type": "error", "message": "GEMINI_API_KEY missing in .env"})
+        if not core.active_providers():
+            yield sse({"type": "error", "message": "No LLM provider configured in .env"})
             return
         if not send_date or not _valid_date(send_date):
             yield sse({"type": "error", "message": "invalid send date"})
@@ -125,9 +124,11 @@ def stream():
                     if site is None:
                         site = core.fetch_site_text(c["website"])
                         site_cache[c["website"]] = site
-                    company_lines[c["company"]] = core.gemini_line(api_key, c, site)
+                    line, provider = core.generate_line(c, site)
+                    company_lines[c["company"]] = line
                     fresh = True
                 else:
+                    provider = "cached"
                     fresh = False
                 line = company_lines[c["company"]]
                 subject, body = core.build_email(template, c, line)
@@ -146,9 +147,9 @@ def stream():
                 already.add(c["email"])
                 added += 1
                 core.save_queue(queue)
-                yield sse({**base, "status": "queued", "line": line})
+                yield sse({**base, "status": "queued", "line": line, "provider": provider})
                 if fresh:
-                    time.sleep(5)  # respect Gemini free-tier rate limit
+                    time.sleep(2)  # gentle pacing across providers
             except Exception as e:  # keep going; report the failure inline
                 yield sse({**base, "status": "error", "line": str(e)})
 

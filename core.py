@@ -25,12 +25,6 @@ QUEUE_FILE = ROOT / "queue.json"
 TEMPLATE_FILE = ROOT / "email.txt"
 ET = ZoneInfo("America/New_York")
 
-GEMINI_MODEL = "gemini-2.5-flash"
-GEMINI_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models/"
-    f"{GEMINI_MODEL}:generateContent"
-)
-
 PROMPT = """You are helping write ONE sentence for a cold email from Jacob, a 17-year-old \
 developer who has shipped real products (ShieldClaw, an AI-agent security layer that won \
 HackCanada, and NoDox, an OSINT self-audit tool). He is emailing {first_name} ({title}) at \
@@ -168,8 +162,12 @@ def fetch_site_text(url: str) -> str:
     return text[:6000]
 
 
-def gemini_line(api_key: str, contact: dict, site_text: str) -> str:
-    prompt = PROMPT.format(
+class RateLimited(Exception):
+    """A provider returned 429 / quota exhausted — try the next one."""
+
+
+def _build_prompt(contact: dict, site_text: str) -> str:
+    return PROMPT.format(
         first_name=contact["first_name"],
         title=contact["title"],
         company=contact["company"],
@@ -178,25 +176,100 @@ def gemini_line(api_key: str, contact: dict, site_text: str) -> str:
         funding=contact["funding"] or "unknown",
         site_text=site_text or "(website unavailable — rely on keywords/industry)",
     )
+
+
+def _call_gemini(model: str, prompt: str) -> str:
+    key = os.environ.get("GEMINI_API_KEY")
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{model}:generateContent"
+    )
     body = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.8, "maxOutputTokens": 2000},
+        "generationConfig": {"temperature": 0.85, "maxOutputTokens": 2000},
     }
-    for attempt in range(6):
-        resp = requests.post(
-            GEMINI_URL, params={"key": api_key}, json=body, timeout=60
-        )
-        if resp.status_code in (429, 500, 503):
-            time.sleep(15 * (attempt + 1))
-            continue
-        resp.raise_for_status()
-        data = resp.json()
+    resp = requests.post(url, params={"key": key}, json=body, timeout=60)
+    if resp.status_code == 429:
+        raise RateLimited(f"gemini/{model} 429")
+    if resp.status_code in (500, 503):
+        raise RateLimited(f"gemini/{model} {resp.status_code}")
+    resp.raise_for_status()
+    data = resp.json()
+    try:
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError):
+        raise RuntimeError(f"gemini bad response: {json.dumps(data)[:200]}")
+
+
+def _call_openai_compatible(base: str, key: str, model: str, prompt: str) -> str:
+    """Works for Groq, OpenRouter, Cerebras, Together, etc."""
+    resp = requests.post(
+        base,
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        json={
+            "model": model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.85,
+            "max_tokens": 200,
+        },
+        timeout=60,
+    )
+    if resp.status_code == 429:
+        raise RateLimited(f"{base} 429")
+    if resp.status_code in (500, 502, 503):
+        raise RateLimited(f"{base} {resp.status_code}")
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"]
+
+
+def active_providers() -> list[dict]:
+    """Build the fallback chain from whatever API keys are present in env."""
+    chain: list[dict] = []
+    if os.environ.get("GEMINI_API_KEY"):
+        chain.append({"name": "gemini-2.5-flash",
+                      "fn": lambda p: _call_gemini("gemini-2.5-flash", p)})
+        chain.append({"name": "gemini-2.5-flash-lite",
+                      "fn": lambda p: _call_gemini("gemini-2.5-flash-lite", p)})
+    if os.environ.get("GROQ_API_KEY"):
+        model = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+        chain.append({"name": f"groq/{model}",
+                      "fn": lambda p, m=model: _call_openai_compatible(
+                          "https://api.groq.com/openai/v1/chat/completions",
+                          os.environ["GROQ_API_KEY"], m, p)})
+    if os.environ.get("OPENROUTER_API_KEY"):
+        model = os.environ.get("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+        chain.append({"name": f"openrouter/{model}",
+                      "fn": lambda p, m=model: _call_openai_compatible(
+                          "https://openrouter.ai/api/v1/chat/completions",
+                          os.environ["OPENROUTER_API_KEY"], m, p)})
+    if os.environ.get("CEREBRAS_API_KEY"):
+        model = os.environ.get("CEREBRAS_MODEL", "llama-3.3-70b")
+        chain.append({"name": f"cerebras/{model}",
+                      "fn": lambda p, m=model: _call_openai_compatible(
+                          "https://api.cerebras.ai/v1/chat/completions",
+                          os.environ["CEREBRAS_API_KEY"], m, p)})
+    return chain
+
+
+def generate_line(contact: dict, site_text: str) -> tuple[str, str]:
+    """Return (line, provider_name). Falls through providers on rate-limit."""
+    prompt = _build_prompt(contact, site_text)
+    chain = active_providers()
+    if not chain:
+        raise RuntimeError("No LLM provider configured (set GEMINI_API_KEY etc.)")
+
+    last_err = None
+    for provider in chain:
         try:
-            text = data["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError):
-            raise RuntimeError(f"Unexpected Gemini response: {json.dumps(data)[:300]}")
-        return remove_dashes(text.strip().strip('"').strip())
-    raise RuntimeError("Gemini retries exhausted (rate limited)")
+            text = provider["fn"](prompt)
+            return remove_dashes(text.strip().strip('"').strip()), provider["name"]
+        except RateLimited as e:
+            last_err = e
+            continue  # next provider
+        except Exception as e:
+            last_err = e
+            continue
+    raise RuntimeError(f"All providers exhausted (last: {last_err})")
 
 
 def build_email(template: str, contact: dict, company_line: str) -> tuple[str, str]:

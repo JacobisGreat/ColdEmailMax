@@ -27,10 +27,10 @@ def main():
     send_date = sys.argv[2] if len(sys.argv) > 2 else core.next_weekday(1)
 
     core.load_env()
-    import os
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        sys.exit("GEMINI_API_KEY missing — put it in .env")
+    providers = core.active_providers()
+    if not providers:
+        sys.exit("No LLM provider configured — set GEMINI_API_KEY (and/or GROQ_API_KEY) in .env")
+    print("providers:", ", ".join(p["name"] for p in providers))
 
     template = core.TEMPLATE_FILE.read_text()
     contacts = core.parse_csv(csv_path.read_text(encoding="utf-8-sig"))
@@ -51,11 +51,10 @@ def main():
         if c["company"] not in company_lines:
             if c["website"] not in site_cache:
                 site_cache[c["website"]] = core.fetch_site_text(c["website"])
-            company_lines[c["company"]] = core.gemini_line(
-                api_key, c, site_cache[c["website"]]
-            )
-            print(f"      line: {company_lines[c['company']]}")
-            time.sleep(5)
+            line, provider = core.generate_line(c, site_cache[c["website"]])
+            company_lines[c["company"]] = line
+            print(f"      [{provider}] {line}")
+            time.sleep(2)
 
         subject, body = core.build_email(template, c, company_lines[c["company"]])
         queue.append(
