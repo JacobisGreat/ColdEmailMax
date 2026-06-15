@@ -338,3 +338,42 @@ def push_to_gas(entries: list[dict]) -> dict:
     )
     resp.raise_for_status()
     return resp.json()
+
+
+def fetch_gas_queue() -> dict:
+    """GET the queue snapshot from Apps Script. Returns the JSON reply or an error dict."""
+    url = os.environ.get("GAS_WEB_APP_URL")
+    token = os.environ.get("GAS_TOKEN")
+    if not url or not token:
+        return {"ok": False, "error": "GAS not configured"}
+    try:
+        resp = requests.get(
+            url,
+            params={"token": token, "action": "status"},
+            timeout=30,
+            allow_redirects=True,
+        )
+        if resp.headers.get("Content-Type", "").startswith("application/json"):
+            return resp.json()
+        # Older Code.gs without doGet returns HTML; surface a clear hint.
+        return {"ok": False, "error": "Apps Script doesn't have doGet — paste the latest gas/Code.gs and redeploy"}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def delete_from_gas(email: str) -> dict:
+    url = os.environ.get("GAS_WEB_APP_URL")
+    token = os.environ.get("GAS_TOKEN")
+    if not url or not token:
+        return {"ok": False, "error": "GAS not configured"}
+    try:
+        resp = requests.post(
+            url,
+            json={"token": token, "action": "delete", "to": email},
+            timeout=30,
+            allow_redirects=True,
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}

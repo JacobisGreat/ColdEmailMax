@@ -142,6 +142,46 @@
 
   .warn { font-size: 13px; color: var(--amber); margin-top: 10px; }
   .footnote { color: var(--muted); font-size: 12.5px; margin-top: 26px; text-align: center; }
+
+  /* Top tab nav */
+  .tabs { display: flex; gap: 6px; margin-bottom: 18px; }
+  .tab {
+    background: transparent; color: var(--muted); border: 1px solid transparent;
+    padding: 8px 14px; border-radius: 9px; font-size: 13.5px; font-weight: 600; cursor: pointer;
+    font-family: inherit;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { background: var(--panel); color: var(--text); border-color: var(--line); }
+
+  /* Queue page */
+  .qtbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .qtbl th, .qtbl td { padding: 11px 13px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  .qtbl th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; background: var(--panel-2); position: sticky; top: 0; }
+  .qtbl tr:hover { background: rgba(109,124,255,.04); }
+  .q-status { font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; }
+  .q-status.pending { background: rgba(56,211,159,.14); color: var(--green); }
+  .q-status.sent { background: rgba(109,124,255,.16); color: #aab2ff; }
+  .q-status.error { background: rgba(255,107,107,.16); color: var(--red); }
+  .q-cloud { font-size: 10px; padding: 1px 6px; border-radius: 5px; margin-left: 4px; }
+  .q-cloud.yes { background: rgba(109,124,255,.16); color: #aab2ff; }
+  .q-cloud.no { background: rgba(245,180,85,.14); color: var(--amber); }
+  .icon-btn {
+    background: transparent; border: 1px solid var(--line); border-radius: 7px;
+    padding: 5px 9px; cursor: pointer; color: var(--muted); font-size: 12px; font-family: inherit;
+  }
+  .icon-btn:hover { color: var(--red); border-color: rgba(255,107,107,.4); background: rgba(255,107,107,.05); }
+  .icon-btn:disabled { opacity: .4; cursor: not-allowed; }
+  details.body-prev { color: var(--muted); font-size: 12.5px; }
+  details.body-prev summary { cursor: pointer; user-select: none; outline: none; }
+  details.body-prev summary:hover { color: var(--text); }
+  details.body-prev pre { white-space: pre-wrap; margin-top: 8px; padding: 10px; background: #0c0e14; border-radius: 8px; border: 1px solid var(--line); font-family: ui-monospace, "SF Mono", monospace; font-size: 12px; color: #cfd3df; }
+  .next-fire {
+    background: linear-gradient(90deg, rgba(109,124,255,.08), rgba(155,109,255,.04));
+    border: 1px solid rgba(109,124,255,.25); border-radius: 10px; padding: 12px 16px;
+    font-size: 13.5px; margin-bottom: 14px; display: flex; gap: 10px; align-items: center;
+  }
+  .next-fire b { color: #aab2ff; }
+  .empty { text-align: center; padding: 40px 20px; color: var(--muted); }
 </style>
 </head>
 <body>
@@ -153,12 +193,18 @@
     line written by AI, and the finished email scheduled for 9:00&nbsp;AM ET — even with this laptop closed.</p>
   </header>
 
+  <div class="tabs">
+    <button class="tab active" data-page="page-send">Send</button>
+    <button class="tab" data-page="page-queue">Queue</button>
+  </div>
+
   {% if not gas_configured %}
   <div class="card" style="border-color: rgba(245,180,85,.4); background: rgba(245,180,85,.06);">
     <strong>Heads up:</strong> <span class="warn" style="margin:0">Apps Script isn't configured (no <code>GAS_WEB_APP_URL</code>), so emails will be queued locally but not pushed to the cloud sender.</span>
   </div>
   {% endif %}
 
+  <div id="page-send">
   <!-- STEP 1: upload -->
   <div class="card" id="step-upload">
     <div id="drop">
@@ -215,6 +261,23 @@
     <h2 id="done-title">Scheduled!</h2>
     <p id="done-msg"></p>
     <div style="margin-top:18px"><button class="btn" id="btn-again">Upload another CSV</button></div>
+  </div>
+  </div><!-- /#page-send -->
+
+  <!-- QUEUE PAGE -->
+  <div id="page-queue" class="hidden">
+    <div id="q-next" class="next-fire hidden"></div>
+    <div class="card" style="padding: 0; overflow: hidden;">
+      <div style="padding: 16px 22px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+        <strong style="font-size: 15px;">Queued emails</strong>
+        <span id="q-summary" class="co" style="color: var(--muted); font-size: 13px;"></span>
+        <div style="flex:1"></div>
+        <button class="btn ghost" id="btn-refresh">Refresh</button>
+      </div>
+      <div id="q-body" style="max-height: 70vh; overflow: auto;">
+        <div class="empty" id="q-loading">Loading queue…</div>
+      </div>
+    </div>
   </div>
 
   <p class="footnote">Runs locally · sends from your Gmail via Google Apps Script · nothing leaves your machine unencrypted</p>
@@ -326,6 +389,100 @@ function finish(d) {
 function show(id){ $("#"+id).classList.remove("hidden"); }
 function hide(id){ $("#"+id).classList.add("hidden"); }
 function esc(s){ return (s||"").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+// ---- Tabs ----
+document.querySelectorAll(".tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.querySelectorAll("#page-send, #page-queue").forEach(p => p.classList.add("hidden"));
+    show(btn.dataset.page);
+    if (btn.dataset.page === "page-queue") loadQueue();
+  });
+});
+
+// ---- Queue page ----
+$("#btn-refresh").addEventListener("click", loadQueue);
+
+async function loadQueue() {
+  const body = $("#q-body");
+  body.innerHTML = '<div class="empty">Loading queue…</div>';
+  let res;
+  try { res = await (await fetch("/api/queue")).json(); }
+  catch (e) { body.innerHTML = `<div class="empty">Failed to load: ${esc(String(e))}</div>`; return; }
+  if (!res.ok) { body.innerHTML = `<div class="empty">Error: ${esc(res.error||"unknown")}</div>`; return; }
+  renderQueue(res);
+}
+
+function renderQueue(res) {
+  const s = res.summary;
+  const summary = `${s.total} total · ${s.pending} pending · ${s.sent} sent` +
+    (s.errors ? ` · ${s.errors} errors` : "") +
+    (s.cloud_total != null ? ` · cloud holds ${s.cloud_total}` : "") +
+    (s.cloud_error ? ` · ⚠️ cloud: ${esc(s.cloud_error)}` : "");
+  $("#q-summary").innerHTML = summary;
+
+  const next = $("#q-next");
+  if (s.next_fire) {
+    next.classList.remove("hidden");
+    const date = s.next_fire.split("T")[0];
+    const human = new Date(date + "T09:00:00").toLocaleDateString("en-US",
+      { weekday:"long", month:"long", day:"numeric", year:"numeric" });
+    next.innerHTML = `🕘 Next send: <b>${human} at 9:00 AM ET</b>`;
+  } else {
+    next.classList.add("hidden");
+  }
+
+  const body = $("#q-body");
+  if (!res.rows.length) {
+    body.innerHTML = '<div class="empty">No emails queued. Drop a CSV on the Send tab to add some.</div>';
+    return;
+  }
+
+  let html = `<table class="qtbl">
+    <thead><tr>
+      <th>Status</th><th>Send date</th><th>Recipient</th><th>Company</th><th>Preview</th><th></th>
+    </tr></thead><tbody>`;
+  res.rows.forEach(r => {
+    const cloud = r.status === "pending"
+      ? (r.in_cloud ? '<span class="q-cloud yes">cloud</span>' : '<span class="q-cloud no">local only</span>')
+      : "";
+    const name = (r.first_name || "").trim();
+    const recipient = `<div style="font-weight:600">${esc(name||r.to)}</div><div class="co">${esc(r.to)}</div>`;
+    const preview = `<details class="body-prev">
+      <summary>${esc(r.subject||"")}</summary>
+      <pre>${esc(r.body||"")}</pre>
+    </details>`;
+    const del = r.status === "pending"
+      ? `<button class="icon-btn" data-del="${esc(r.to)}">Cancel</button>`
+      : `<button class="icon-btn" disabled>—</button>`;
+    html += `<tr>
+      <td><span class="q-status ${r.status}">${r.status}</span>${cloud}</td>
+      <td>${esc(r.send_date||"")}</td>
+      <td>${recipient}</td>
+      <td>${esc(r.company||"")}</td>
+      <td style="max-width: 360px;">${preview}</td>
+      <td style="text-align:right">${del}</td>
+    </tr>`;
+  });
+  html += "</tbody></table>";
+  body.innerHTML = html;
+
+  body.querySelectorAll("[data-del]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const email = btn.dataset.del;
+      if (!confirm(`Cancel the email queued to ${email}?`)) return;
+      btn.disabled = true; btn.textContent = "…";
+      const r = await (await fetch("/api/queue/delete", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({to: email})
+      })).json();
+      if (!r.ok) { alert("Failed: " + (r.error||"")); btn.disabled = false; btn.textContent = "Cancel"; return; }
+      loadQueue();
+    });
+  });
+}
 </script>
 </body>
 </html>

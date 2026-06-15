@@ -199,6 +199,71 @@ def stream():
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
+@app.route("/api/queue")
+def api_queue():
+    """Combined view: local queue.json + cloud (Apps Script) snapshot."""
+    local = core.load_queue()
+    cloud = core.fetch_gas_queue()
+    cloud_emails = set()
+    if cloud.get("ok"):
+        cloud_emails = {e.get("to", "").lower() for e in cloud.get("queue", [])}
+
+    rows = []
+    for e in local:
+        rows.append({
+            "to": e.get("to"),
+            "first_name": e.get("first_name"),
+            "company": e.get("company"),
+            "subject": e.get("subject"),
+            "body": e.get("body"),
+            "send_date": e.get("send_date"),
+            "status": e.get("status"),
+            "queued_at": e.get("queued_at"),
+            "sent_at": e.get("sent_at"),
+            "error": e.get("error"),
+            "in_cloud": e.get("to", "").lower() in cloud_emails,
+        })
+    rows.sort(key=lambda r: (r["status"] != "pending", r["send_date"] or "", r["queued_at"] or ""))
+
+    summary = {
+        "total": len(local),
+        "pending": sum(1 for r in rows if r["status"] == "pending"),
+        "sent": sum(1 for r in rows if r["status"] == "sent"),
+        "errors": sum(1 for r in rows if r["status"] == "error"),
+        "in_cloud": sum(1 for r in rows if r["in_cloud"]),
+        "cloud_total": cloud.get("total") if cloud.get("ok") else None,
+        "cloud_pending": cloud.get("pending") if cloud.get("ok") else None,
+        "cloud_error": cloud.get("error") if not cloud.get("ok") else None,
+        "next_fire": cloud.get("next_fire") if cloud.get("ok") else None,
+    }
+    return jsonify({"ok": True, "summary": summary, "rows": rows})
+
+
+@app.route("/api/queue/delete", methods=["POST"])
+def api_queue_delete():
+    data = request.get_json(silent=True) or {}
+    email = (data.get("to") or "").lower()
+    if not email:
+        return jsonify({"ok": False, "error": "missing 'to'"}), 400
+
+    queue = core.load_queue()
+    before = len(queue)
+    queue = [e for e in queue if not (e.get("to", "").lower() == email and e.get("status") == "pending")]
+    removed_local = before - len(queue)
+    core.save_queue(queue)
+    try:
+        core.encrypt_queue()
+    except Exception:
+        pass
+
+    cloud_result = core.delete_from_gas(email)
+    return jsonify({
+        "ok": True,
+        "removed_local": removed_local,
+        "cloud": cloud_result,
+    })
+
+
 def _valid_date(s: str) -> bool:
     try:
         datetime.strptime(s, "%Y-%m-%d")
