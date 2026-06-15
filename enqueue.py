@@ -10,6 +10,7 @@ send date (default: next business day) for the 9:00 AM ET sender.
 The web app (app.py) does the same thing with a UI.
 """
 
+import os
 import sys
 import time
 from datetime import datetime
@@ -42,6 +43,9 @@ def main():
     company_lines: dict[str, str] = {}
     site_cache: dict[str, str] = {}
     added = 0
+    cloud_ok = 0
+    cloud_failed = 0
+    gas_configured = bool(os.environ.get("GAS_WEB_APP_URL") and os.environ.get("GAS_TOKEN"))
 
     for c in contacts:
         if c["email"] in already:
@@ -57,23 +61,43 @@ def main():
             time.sleep(2)
 
         subject, body = core.build_email(template, c, company_lines[c["company"]])
-        queue.append(
-            {
-                "to": c["email"],
-                "first_name": c["first_name"],
-                "company": c["company"],
-                "subject": subject,
-                "body": body,
-                "send_date": send_date,
-                "status": "pending",
-                "queued_at": datetime.now(core.ET).isoformat(),
-            }
-        )
+        entry = {
+            "to": c["email"],
+            "first_name": c["first_name"],
+            "company": c["company"],
+            "subject": subject,
+            "body": body,
+            "send_date": send_date,
+            "status": "pending",
+            "queued_at": datetime.now(core.ET).isoformat(),
+        }
+        queue.append(entry)
         already.add(c["email"])
         added += 1
         core.save_queue(queue)
 
-    print(f"\nQueued {added} emails -> queue.json")
+        # Push to Apps Script immediately so progress is durable on the cloud.
+        if gas_configured:
+            try:
+                result = core.push_to_gas([entry])
+                if result.get("ok"):
+                    cloud_ok += 1
+                    print(f"      → cloud OK (gas holds {result.get('total','?')})")
+                else:
+                    cloud_failed += 1
+                    print(f"      ! cloud rejected: {result.get('error')}")
+            except Exception as e:
+                cloud_failed += 1
+                print(f"      ! cloud push error: {e}")
+
+    try:
+        core.encrypt_queue()
+    except Exception:
+        pass
+
+    print(f"\nQueued {added} emails → queue.json")
+    if gas_configured:
+        print(f"Cloud push: {cloud_ok} ok, {cloud_failed} failed")
 
 
 if __name__ == "__main__":

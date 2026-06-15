@@ -109,7 +109,11 @@ def stream():
         company_lines: dict[str, str] = {}
         site_cache: dict[str, str] = {}
         added = 0
-        new_entries = []
+        cloud_ok = 0
+        cloud_failed = 0
+        gas_configured = bool(
+            os.environ.get("GAS_WEB_APP_URL") and os.environ.get("GAS_TOKEN")
+        )
 
         for i, c in enumerate(contacts):
             base = {"type": "contact", "i": i, "name": f"{c['first_name']} {c['last_name']}".strip(),
@@ -143,34 +147,50 @@ def stream():
                     "queued_at": datetime.now(core.ET).isoformat(),
                 }
                 queue.append(entry)
-                new_entries.append(entry)
                 already.add(c["email"])
                 added += 1
                 core.save_queue(queue)
-                yield sse({**base, "status": "queued", "line": line, "provider": provider})
+
+                # Push this single entry to Apps Script RIGHT NOW so a crash
+                # mid-batch never loses progress.
+                cloud_status = "skip"
+                cloud_error = None
+                if gas_configured:
+                    try:
+                        result = core.push_to_gas([entry])
+                        if result.get("ok"):
+                            cloud_status = "ok"
+                            cloud_ok += 1
+                        else:
+                            cloud_status = "fail"
+                            cloud_error = result.get("error", "unknown")
+                            cloud_failed += 1
+                    except Exception as e:
+                        cloud_status = "fail"
+                        cloud_error = str(e)
+                        cloud_failed += 1
+
+                yield sse({**base, "status": "queued", "line": line,
+                           "provider": provider, "cloud": cloud_status,
+                           "cloud_error": cloud_error})
                 if fresh:
                     time.sleep(2)  # gentle pacing across providers
-            except Exception as e:  # keep going; report the failure inline
+            except Exception as e:
                 yield sse({**base, "status": "error", "line": str(e)})
 
-        # Deliver: encrypt locally + hand pending entries to Apps Script.
-        gas_result = {"ok": False, "error": "not configured"}
         try:
             core.encrypt_queue()
         except Exception:
             pass
-        if new_entries:
-            try:
-                gas_result = core.push_to_gas(new_entries)
-            except Exception as e:
-                gas_result = {"ok": False, "error": str(e)}
 
         yield sse(
             {
                 "type": "done",
                 "added": added,
                 "send_date": send_date,
-                "gas": gas_result,
+                "cloud_ok": cloud_ok,
+                "cloud_failed": cloud_failed,
+                "gas_configured": gas_configured,
             }
         )
         JOBS.pop(job_id, None)

@@ -129,6 +129,8 @@
   .badge.queued { background: rgba(56,211,159,.16); color: var(--green); }
   .badge.skipped { background: rgba(139,144,160,.16); color: var(--muted); }
   .badge.error { background: rgba(255,107,107,.16); color: var(--red); }
+  .badge.cloud-ok { background: rgba(109,124,255,.16); color: #aab2ff; }
+  .badge.cloud-fail { background: rgba(245,180,85,.16); color: var(--amber); cursor: help; }
 
   .done {
     text-align: center; padding: 30px 20px;
@@ -291,12 +293,15 @@ function addItem(d) {
   const div = document.createElement("div");
   div.className = "item";
   const prov = d.provider && d.provider !== "cached" ? `<span class="co" style="font-size:11px">via ${esc(d.provider)}</span>` : "";
-  const badge = `${prov} <span class="badge ${d.status}">${d.status}</span>`;
+  let cloud = "";
+  if (d.cloud === "ok")        cloud = '<span class="badge cloud-ok">☁ sent to cloud</span>';
+  else if (d.cloud === "fail") cloud = `<span class="badge cloud-fail" title="${esc(d.cloud_error||'')}">☁ cloud failed</span>`;
+  const badge = `${prov} ${cloud} <span class="badge ${d.status}">${d.status}</span>`;
   const line = d.status === "queued"
     ? `<div class="line">“${esc(d.line)}”</div>`
     : (d.status === "error" ? `<div class="line" style="color:var(--red);font-style:normal">${esc(d.line)}</div>` : "");
   div.innerHTML = `<div class="head"><div><div class="who">${esc(d.name||d.email)}</div>
-    <div class="co">${esc(d.company)} · ${esc(d.email)}</div></div>${badge}</div>${line}`;
+    <div class="co">${esc(d.company)} · ${esc(d.email)}</div></div><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${badge}</div></div>${line}`;
   $("#feed").prepend(div);
 }
 
@@ -305,10 +310,15 @@ function finish(d) {
   const dateStr = new Date(d.send_date + "T09:00:00").toLocaleDateString("en-US",
     { weekday:"long", month:"long", day:"numeric" });
   let msg = `${d.added} email${d.added===1?"":"s"} scheduled for ${dateStr} at 9:00 AM ET.`;
-  if (d.gas && d.gas.ok) msg += ` Pushed to the cloud sender (now holding ${d.gas.total}).`;
-  else if (d.added > 0 && d.gas && !d.gas.ok) {
-    msg += ` ⚠️ Cloud push failed (${esc(d.gas.error||"")}) — queued locally only.`;
-    $("#done-title").textContent = "Queued (cloud push failed)";
+  if (d.gas_configured) {
+    if (d.cloud_failed === 0 && d.cloud_ok > 0) {
+      msg += ` All ${d.cloud_ok} pushed to the cloud sender as they were drafted.`;
+    } else if (d.cloud_failed > 0) {
+      msg += ` ⚠️ ${d.cloud_ok} reached cloud, ${d.cloud_failed} failed (queued locally only).`;
+      $("#done-title").textContent = "Queued (some cloud pushes failed)";
+    }
+  } else {
+    msg += " (Cloud sender not configured — queued locally only.)";
   }
   $("#done-msg").innerHTML = msg;
 }
