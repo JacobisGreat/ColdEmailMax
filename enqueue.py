@@ -60,13 +60,14 @@ def main():
             print(f"      [{provider}] {line}")
             time.sleep(2)
 
-        subject, body = core.build_email(template, c, company_lines[c["company"]])
+        subject, raw_body = core.build_email(template, c, company_lines[c["company"]])
         entry = {
             "to": c["email"],
             "first_name": c["first_name"],
             "company": c["company"],
             "subject": subject,
-            "body": body,
+            "body": core.to_plain_body(raw_body),
+            "html": core.to_html_body(raw_body),
             "send_date": send_date,
             "status": "pending",
             "queued_at": datetime.now(core.ET).isoformat(),

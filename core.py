@@ -287,6 +287,48 @@ def build_email(template: str, contact: dict, company_line: str) -> tuple[str, s
     return remove_dashes(subject), remove_dashes(body)
 
 
+_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+
+
+def to_html_body(plain: str) -> str:
+    """Render the plain-text body as a minimal HTML email.
+
+    - `[text](url)` markdown links become real `<a href>` anchors.
+    - Paragraph spacing is preserved with `<br>` (one paragraph = one block).
+    - Everything else stays exact (no font/color overrides — Gmail will use
+      its default sans-serif so it visually matches a hand-typed message).
+    """
+    def link_sub(match):
+        text = html.escape(match.group(1))
+        url = html.escape(match.group(2), quote=True)
+        return f'<a href="{url}">{text}</a>'
+
+    paragraphs = plain.split("\n\n")
+    blocks = []
+    for para in paragraphs:
+        escaped = html.escape(para)
+        # restore markdown links by running the regex on the *escaped* text:
+        # since [ ] ( ) survive html.escape unchanged, this is safe.
+        linked = _MD_LINK_RE.sub(link_sub, escaped)
+        linked = linked.replace("\n", "<br>")
+        blocks.append(f"<p style=\"margin:0 0 1em 0\">{linked}</p>")
+    return (
+        '<div style="font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif;'
+        'font-size:14px;line-height:1.5;color:#202124">'
+        + "".join(blocks)
+        + "</div>"
+    )
+
+
+def to_plain_body(plain_with_md: str) -> str:
+    """Strip markdown link syntax to a clean plain-text fallback.
+
+    `[Github](https://github.com/...)` -> `Github (https://github.com/...)`
+    so the URL stays visible and clickable in clients that don't render HTML.
+    """
+    return _MD_LINK_RE.sub(lambda m: f"{m.group(1)} ({m.group(2)})", plain_with_md)
+
+
 # --------------------------------------------------------------------------- #
 # Queue persistence + delivery
 # --------------------------------------------------------------------------- #
