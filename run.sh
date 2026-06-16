@@ -26,5 +26,5 @@ if git diff --cached --quiet; then
 else
   git commit -m "queue batch $(date +%F)"
   git push
-  echo "Pushed — emails go out tomorrow at 9:00 AM ET."
+  echo "Pushed — emails go out tomorrow at 9:30 AM ET."
 fi

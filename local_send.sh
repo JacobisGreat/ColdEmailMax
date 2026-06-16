@@ -1,5 +1,5 @@
 #!/bin/zsh
-# ColdEmailMax — local fallback sender (launchd runs this daily at 9:00 AM ET).
+# ColdEmailMax — local fallback sender (launchd runs this daily at 9:30 AM ET).
 # Same logic as the GitHub Action: decrypt -> send due emails -> re-encrypt -> push.
 set -e
 cd "$(dirname "$0")"

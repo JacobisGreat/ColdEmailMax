@@ -17,7 +17,7 @@ def main():
     if not data.get("ok"):
         sys.exit(f"Apps Script rejected the push: {data}")
     print(f"Pushed {data['added']} new entries (Apps Script now holds {data['total']}).")
-    print("They'll go out at 9:00 AM ET on their send date — laptop can be off.")
+    print("They'll go out at 9:30 AM ET on their send date — laptop can be off.")
 
 
 if __name__ == "__main__":

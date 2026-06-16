@@ -342,12 +342,74 @@ def save_queue(queue: list[dict]):
     QUEUE_FILE.write_text(json.dumps(queue, indent=2))
 
 
+SEND_HOUR = 9
+SEND_MIN = 30
+
+
 def next_weekday(days_ahead: int = 1) -> str:
     """Next business day (Mon–Fri) at least `days_ahead` days out, YYYY-MM-DD ET."""
     d = datetime.now(ET) + timedelta(days=days_ahead)
     while d.weekday() >= 5:  # Sat=5, Sun=6
         d += timedelta(days=1)
     return d.strftime("%Y-%m-%d")
+
+
+def is_past_due(send_date: str) -> bool:
+    """True if a YYYY-MM-DD send date has already passed this morning's 9:30 ET window."""
+    try:
+        d = datetime.strptime(send_date, "%Y-%m-%d").replace(
+            hour=SEND_HOUR, minute=SEND_MIN, tzinfo=ET
+        )
+    except ValueError:
+        return False
+    return d <= datetime.now(ET)
+
+
+def reschedule_past_due(push_to_cloud: bool = True) -> dict:
+    """Bump every pending entry whose send_date is past today's 9:30 ET window
+    forward to the next business day. Updates local queue.json and (optionally)
+    deletes + re-pushes each touched entry to Apps Script so the cloud schedule
+    matches.
+    """
+    queue = load_queue()
+    target_date = next_weekday(1)
+    rescheduled = []
+    for entry in queue:
+        if entry.get("status") != "pending":
+            continue
+        if is_past_due(entry.get("send_date", "")):
+            entry["send_date"] = target_date
+            rescheduled.append(entry)
+
+    if not rescheduled:
+        return {"rescheduled": 0, "target_date": target_date,
+                "cloud_ok": 0, "cloud_failed": 0}
+
+    save_queue(queue)
+    try:
+        encrypt_queue()
+    except Exception:
+        pass
+
+    cloud_ok = 0
+    cloud_failed = 0
+    if push_to_cloud and os.environ.get("GAS_WEB_APP_URL"):
+        for entry in rescheduled:
+            try:
+                delete_from_gas(entry["to"])
+                r = push_to_gas([entry])
+                if r.get("ok"):
+                    cloud_ok += 1
+                else:
+                    cloud_failed += 1
+            except Exception:
+                cloud_failed += 1
+    return {
+        "rescheduled": len(rescheduled),
+        "target_date": target_date,
+        "cloud_ok": cloud_ok,
+        "cloud_failed": cloud_failed,
+    }
 
 
 def encrypt_queue():

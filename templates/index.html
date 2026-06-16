@@ -235,7 +235,7 @@
 
     <div class="row" style="margin-top:20px;">
       <div>
-        <label class="field" for="send-date">Send date · 9:00 AM ET</label>
+        <label class="field" for="send-date">Send date · 9:30 AM ET</label>
         <input type="date" id="send-date" value="{{ default_date }}" />
       </div>
       <div style="flex:1"></div>
@@ -272,6 +272,7 @@
         <strong style="font-size: 15px;">Queued emails</strong>
         <span id="q-summary" class="co" style="color: var(--muted); font-size: 13px;"></span>
         <div style="flex:1"></div>
+        <button class="btn ghost" id="btn-reschedule" title="Bump every past-due pending entry to the next business day">Reschedule past-due</button>
         <button class="btn ghost" id="btn-refresh">Refresh</button>
       </div>
       <div id="q-body" style="max-height: 70vh; overflow: auto;">
@@ -370,9 +371,9 @@ function addItem(d) {
 
 function finish(d) {
   hide("step-progress"); show("step-done");
-  const dateStr = new Date(d.send_date + "T09:00:00").toLocaleDateString("en-US",
+  const dateStr = new Date(d.send_date + "T09:30:00").toLocaleDateString("en-US",
     { weekday:"long", month:"long", day:"numeric" });
-  let msg = `${d.added} email${d.added===1?"":"s"} scheduled for ${dateStr} at 9:00 AM ET.`;
+  let msg = `${d.added} email${d.added===1?"":"s"} scheduled for ${dateStr} at 9:30 AM ET.`;
   if (d.gas_configured) {
     if (d.cloud_failed === 0 && d.cloud_ok > 0) {
       msg += ` All ${d.cloud_ok} pushed to the cloud sender as they were drafted.`;
@@ -403,6 +404,24 @@ document.querySelectorAll(".tab").forEach(btn => {
 
 // ---- Queue page ----
 $("#btn-refresh").addEventListener("click", loadQueue);
+$("#btn-reschedule").addEventListener("click", async () => {
+  const btn = $("#btn-reschedule");
+  btn.disabled = true; btn.textContent = "Rescheduling…";
+  try {
+    const r = await (await fetch("/api/queue/reschedule", { method: "POST" })).json();
+    if (!r.ok) { alert("Failed: " + (r.error||"")); return; }
+    if (r.rescheduled === 0) {
+      alert("Nothing past-due — every pending email is already set for a future date.");
+    } else {
+      const human = new Date(r.target_date + "T09:30:00").toLocaleDateString("en-US",
+        { weekday:"long", month:"long", day:"numeric" });
+      alert(`Rescheduled ${r.rescheduled} email${r.rescheduled===1?"":"s"} to ${human} at 9:30 AM ET.\n` +
+            `Cloud sync: ${r.cloud_ok} ok / ${r.cloud_failed} failed.`);
+    }
+    loadQueue();
+  } catch (e) { alert("Failed: " + e); }
+  finally { btn.disabled = false; btn.textContent = "Reschedule past-due"; }
+});
 
 async function loadQueue() {
   const body = $("#q-body");
@@ -426,9 +445,9 @@ function renderQueue(res) {
   if (s.next_fire) {
     next.classList.remove("hidden");
     const date = s.next_fire.split("T")[0];
-    const human = new Date(date + "T09:00:00").toLocaleDateString("en-US",
+    const human = new Date(date + "T09:30:00").toLocaleDateString("en-US",
       { weekday:"long", month:"long", day:"numeric", year:"numeric" });
-    next.innerHTML = `🕘 Next send: <b>${human} at 9:00 AM ET</b>`;
+    next.innerHTML = `🕘 Next send: <b>${human} at 9:30 AM ET</b>`;
   } else {
     next.classList.add("hidden");
   }

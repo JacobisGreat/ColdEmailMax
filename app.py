@@ -6,7 +6,7 @@ Then open http://127.0.0.1:5000
 
 Upload an Apollo or lead-list CSV, pick a send date, and the app researches
 each company, writes a personalized line with Gemini, builds the emails, and
-hands them to Google Apps Script to send at 9:00 AM ET — laptop can be off.
+hands them to Google Apps Script to send at 9:30 AM ET — laptop can be off.
 """
 
 import json
@@ -20,6 +20,15 @@ from flask import Flask, Response, jsonify, render_template, request
 import core
 
 core.load_env()
+
+# Auto-reschedule any past-due pending entries on startup.
+try:
+    _r = core.reschedule_past_due(push_to_cloud=True)
+    if _r["rescheduled"]:
+        print(f"[startup] rescheduled {_r['rescheduled']} past-due entries -> {_r['target_date']} "
+              f"(cloud: {_r['cloud_ok']} ok / {_r['cloud_failed']} failed)")
+except Exception as _e:
+    print(f"[startup] reschedule skipped: {_e}")
 
 app = Flask(__name__)
 JOBS: dict[str, dict] = {}  # job_id -> {"contacts": [...], "format": str}
@@ -238,6 +247,12 @@ def api_queue():
         "next_fire": cloud.get("next_fire") if cloud.get("ok") else None,
     }
     return jsonify({"ok": True, "summary": summary, "rows": rows})
+
+
+@app.route("/api/queue/reschedule", methods=["POST"])
+def api_queue_reschedule():
+    result = core.reschedule_past_due(push_to_cloud=True)
+    return jsonify({"ok": True, **result})
 
 
 @app.route("/api/queue/delete", methods=["POST"])

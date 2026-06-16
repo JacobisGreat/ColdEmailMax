@@ -6,7 +6,7 @@ Usage:
 
 Reads an Apollo OR lead-list CSV, researches each company (website + Gemini),
 fills in the email template, and queues every email in queue.json with a
-send date (default: next business day) for the 9:00 AM ET sender.
+send date (default: next business day) for the 9:30 AM ET sender.
 The web app (app.py) does the same thing with a UI.
 """
 
@@ -38,7 +38,7 @@ def main():
     queue = core.load_queue()
     already = {e["to"].lower() for e in queue}
 
-    print(f"{len(contacts)} contacts — queueing for {send_date} 9:00 AM ET\n")
+    print(f"{len(contacts)} contacts — queueing for {send_date} 9:30 AM ET\n")
 
     company_lines: dict[str, str] = {}
     site_cache: dict[str, str] = {}

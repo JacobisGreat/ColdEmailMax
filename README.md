@@ -1,7 +1,7 @@
 # ColdEmailMax
 
 Paste an Apollo CSV export in, personalized cold emails go out the next morning
-at 9:00 AM ET — automatically, even with your laptop closed.
+at 9:30 AM ET — automatically, even with your laptop closed.
 
 ## How it works
 
