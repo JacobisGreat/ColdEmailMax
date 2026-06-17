@@ -438,6 +438,7 @@ function renderQueue(res) {
   const summary = `${s.total} total · ${s.pending} pending · ${s.sent} sent` +
     (s.errors ? ` · ${s.errors} errors` : "") +
     (s.cloud_total != null ? ` · cloud holds ${s.cloud_total}` : "") +
+    (s.synced_from_cloud ? ` · ✓ synced ${s.synced_from_cloud} from cloud` : "") +
     (s.cloud_error ? ` · ⚠️ cloud: ${esc(s.cloud_error)}` : "");
   $("#q-summary").innerHTML = summary;
 

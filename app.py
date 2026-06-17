@@ -211,12 +211,41 @@ def stream():
 
 @app.route("/api/queue")
 def api_queue():
-    """Combined view: local queue.json + cloud (Apps Script) snapshot."""
+    """Combined view: local queue.json + cloud (Apps Script) snapshot.
+
+    Cloud is the source of truth for delivery: if cloud says an entry was
+    sent (or errored), the local copy gets updated to match before we render.
+    """
     local = core.load_queue()
     cloud = core.fetch_gas_queue()
-    cloud_emails = set()
+    cloud_by_email: dict[str, dict] = {}
     if cloud.get("ok"):
-        cloud_emails = {e.get("to", "").lower() for e in cloud.get("queue", [])}
+        cloud_by_email = {e.get("to", "").lower(): e for e in cloud.get("queue", [])}
+
+    # Auto-sync: pull cloud's status/sent_at/error down to local for any
+    # local pending entry whose cloud counterpart has progressed.
+    synced = 0
+    if cloud_by_email:
+        for entry in local:
+            if entry.get("status") != "pending":
+                continue
+            c = cloud_by_email.get(entry.get("to", "").lower())
+            if not c:
+                continue
+            cstat = c.get("status")
+            if cstat in ("sent", "error") and cstat != entry.get("status"):
+                entry["status"] = cstat
+                if c.get("sent_at"):
+                    entry["sent_at"] = c["sent_at"]
+                if c.get("error"):
+                    entry["error"] = c["error"]
+                synced += 1
+        if synced:
+            core.save_queue(local)
+            try:
+                core.encrypt_queue()
+            except Exception:
+                pass
 
     rows = []
     for e in local:
@@ -231,7 +260,7 @@ def api_queue():
             "queued_at": e.get("queued_at"),
             "sent_at": e.get("sent_at"),
             "error": e.get("error"),
-            "in_cloud": e.get("to", "").lower() in cloud_emails,
+            "in_cloud": e.get("to", "").lower() in cloud_by_email,
         })
     rows.sort(key=lambda r: (r["status"] != "pending", r["send_date"] or "", r["queued_at"] or ""))
 
@@ -245,6 +274,7 @@ def api_queue():
         "cloud_pending": cloud.get("pending") if cloud.get("ok") else None,
         "cloud_error": cloud.get("error") if not cloud.get("ok") else None,
         "next_fire": cloud.get("next_fire") if cloud.get("ok") else None,
+        "synced_from_cloud": synced,
     }
     return jsonify({"ok": True, "summary": summary, "rows": rows})
 
